@@ -13,7 +13,7 @@ try:
 except:  # pragma: no cover
     pass
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __short_description__ = "Object style interface for package/module."
 __license__ = "MIT"
 __author__ = "Sanhe Hu"

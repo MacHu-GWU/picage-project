@@ -1,8 +1,8 @@
 .. image:: https://travis-ci.org/MacHu-GWU/picage-project.svg?branch=master
     :target: https://travis-ci.org/MacHu-GWU/picage-project?branch=master
 
-.. image:: https://coveralls.io/repos/github/MacHu-GWU/picage-project/badge.svg?branch=master
-    :target: https://coveralls.io/github/MacHu-GWU/picage-project?branch=master
+.. image:: https://codecov.io/gh/MacHu-GWU/picage-project/branch/master/graph/badge.svg
+  :target: https://codecov.io/gh/MacHu-GWU/picage-project
 
 .. image:: https://img.shields.io/pypi/v/picage.svg
     :target: https://pypi.python.org/pypi/picage
