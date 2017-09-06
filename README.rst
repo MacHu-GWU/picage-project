@@ -34,7 +34,6 @@ Quick Links
 
 Usage
 -----
-**Usage**:
 
 .. code-block:: python
 
