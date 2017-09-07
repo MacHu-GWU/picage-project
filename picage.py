@@ -10,10 +10,10 @@ from collections import OrderedDict
 
 try:
     from pathlib_mate.pathlib import Path
-except:  # pragma: no cover
+except: # pragma: no cover
     pass
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 __short_description__ = "Object style interface for package/module."
 __license__ = "MIT"
 __author__ = "Sanhe Hu"
@@ -94,7 +94,7 @@ class BaseModuleOrPackage(object):
             root = chain[0]
 
             # test if using .egg-link
-            p = Path(SP_DIR, root + ".egg-link")
+            p = Path(SP_DIR, root.replace("_", "-") + ".egg-link")
             if p.is_file() and p.exists():
                 with open(p.abspath, "rb") as f:
                     sp_dir = f.readline().decode("utf-8").strip()
@@ -110,6 +110,7 @@ class BaseModuleOrPackage(object):
 
             # then has to be a directory having __init__.py file
             p = Path(sp_dir, *chain)
+            print(p)
             if p.is_dir() and p.exists() and Path(p, "__init__.py").exists():
                 self.path = Path(sp_dir, *chain)
                 self.is_single_file = False
