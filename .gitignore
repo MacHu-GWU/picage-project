@@ -1,5 +1,7 @@
 # User Settings
+picage_venv
 picage.egg-info
+picage-*
 index.rst
 
 # Byte-compiled / optimized / DLL files

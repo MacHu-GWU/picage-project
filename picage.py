@@ -34,7 +34,7 @@ def get_sp_dir():  # pragma: no cover
     system_name = platform.system()
     if system_name == "Windows":
         site_packages_path = os.path.join(
-            os.path.dirname(sys.executable),
+            os.path.dirname(os.path.dirname(sys.executable)),
             "Lib",
             "site-packages",
         )
