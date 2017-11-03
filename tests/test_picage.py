@@ -98,6 +98,11 @@ class TestPicage(BaseTest):
     importable = picage
 
 
+def test_not_found():
+    with raises(Exception):
+        p = Package("not_existing_package")
+
+
 if __name__ == "__main__":
     import os
 

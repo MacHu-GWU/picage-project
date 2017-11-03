@@ -10,10 +10,10 @@ from collections import OrderedDict
 
 try:
     from pathlib_mate.pathlib import Path
-except: # pragma: no cover
+except:  # pragma: no cover
     pass
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 __short_description__ = "Object style interface for package/module."
 __license__ = "MIT"
 __author__ = "Sanhe Hu"
@@ -26,7 +26,8 @@ Tab = " " * 4
 
 
 def get_sp_dir():  # pragma: no cover
-    """Get the absolute path of the ``site-packages`` directory.
+    """
+    Get the absolute path of the ``site-packages`` directory.
     """
     py_ver_major = sys.version_info.major
     py_ver_minor = sys.version_info.minor
@@ -59,7 +60,8 @@ _char_set_for_valid_name = set(string.ascii_letters + string.digits + "_-")
 
 
 def assert_is_valid_name(name, error=None):
-    """Test it's a valid package or module name.
+    """
+    Test whether it's a valid package or module name.
 
     - a-z, 0-9, and underline
     - starts with underline or alpha letter
@@ -110,7 +112,6 @@ class BaseModuleOrPackage(object):
 
             # then has to be a directory having __init__.py file
             p = Path(sp_dir, *chain)
-            print(p)
             if p.is_dir() and p.exists() and Path(p, "__init__.py").exists():
                 self.path = Path(sp_dir, *chain)
                 self.is_single_file = False
@@ -122,14 +123,16 @@ class BaseModuleOrPackage(object):
 
     @property
     def fullname(self):
-        """Example: ``sphinx.environment.adapter``.
+        """
+        Example: for package ``pip.commands.install``, it's
+        ``pip.commands.install``.
         """
         return self.name
 
     @property
     def shortname(self):
-        """Example: for package ``sphinx.environment.adapter``,
-        it's ``adapter``.
+        """
+        Example: for package ``pip.commands.install``, it's ``install``.
         """
         if "." in self.name:
             return self.name.split(".")[-1]
@@ -141,7 +144,8 @@ class BaseModuleOrPackage(object):
 
 
 class Module(BaseModuleOrPackage):
-    """Represent a module object in Python. Typically it's a ``*.py`` file.
+    """
+    Represent a module object in Python. Typically it's a ``*.py`` file.
 
     :param name: module name, e.g.: "pip.commands.install".
     :param path: module file absolute path.
@@ -154,7 +158,8 @@ class Module(BaseModuleOrPackage):
 
 
 class Package(BaseModuleOrPackage):
-    """Represent a package object in Python. It is a directory having a
+    """
+    Represent a package object in Python. It is a directory having a
     ``__init__.py`` file.
 
     :param name: dot seperated full name, e.g.: "pip.commands.install".
@@ -245,7 +250,8 @@ class Package(BaseModuleOrPackage):
                         self.name, name))
 
     def walk(self):
-        """A generator that walking through all sub packages and sub modules.
+        """
+        A generator that walking through all sub packages and sub modules.
 
         1. current package object (包对象)
         2. current package's parent (当前包对象的母包)
@@ -264,7 +270,8 @@ class Package(BaseModuleOrPackage):
                 yield things
 
     def _tree_view_builder(self, indent=0, is_root=True):
-        """Build a text to represent the package structure.
+        """
+        Build a text to represent the package structure.
         """
 
         def pad_text(indent):
@@ -303,6 +310,7 @@ class Package(BaseModuleOrPackage):
         return "\n".join(lines)
 
     def pprint(self):
-        """Pretty print the package structure.
+        """
+        Pretty print the package structure.
         """
         print(self._tree_view_builder(indent=0, is_root=True))
