@@ -7,6 +7,10 @@ from pytest import raises, approx
 
 def test():
     import picage
+    picage.SP_DIR
+    picage.is_valid_package_module_name
+    picage.Module
+    picage.Package
 
 
 if __name__ == "__main__":

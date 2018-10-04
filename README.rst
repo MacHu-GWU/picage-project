@@ -1,3 +1,8 @@
+
+.. image:: https://readthedocs.org/projects/picage/badge/?version=latest
+    :target: https://picage.readthedocs.io/?badge=latest
+    :alt: Documentation Status
+
 .. image:: https://travis-ci.org/MacHu-GWU/picage-project.svg?branch=master
     :target: https://travis-ci.org/MacHu-GWU/picage-project?branch=master
 
@@ -13,35 +18,40 @@
 .. image:: https://img.shields.io/pypi/pyversions/picage.svg
     :target: https://pypi.python.org/pypi/picage
 
-.. image:: https://img.shields.io/badge/Star_Me_on_GitHub!--None.svg?style=social
+.. image:: https://img.shields.io/badge/STAR_Me_on_GitHub!--None.svg?style=social
     :target: https://github.com/MacHu-GWU/picage-project
+
+------
+
+
+.. image:: https://img.shields.io/badge/Link-Document-blue.svg
+      :target: https://picage.readthedocs.io/index.html
+
+.. image:: https://img.shields.io/badge/Link-API-blue.svg
+      :target: https://picage.readthedocs.io/py-modindex.html
+
+.. image:: https://img.shields.io/badge/Link-Source_Code-blue.svg
+      :target: https://picage.readthedocs.io/py-modindex.html
+
+.. image:: https://img.shields.io/badge/Link-Install-blue.svg
+      :target: `install`_
+
+.. image:: https://img.shields.io/badge/Link-GitHub-blue.svg
+      :target: https://github.com/MacHu-GWU/picage-project
+
+.. image:: https://img.shields.io/badge/Link-Submit_Issue-blue.svg
+      :target: https://github.com/MacHu-GWU/picage-project/issues
+
+.. image:: https://img.shields.io/badge/Link-Request_Feature-blue.svg
+      :target: https://github.com/MacHu-GWU/picage-project/issues
+
+.. image:: https://img.shields.io/badge/Link-Download-blue.svg
+      :target: https://pypi.org/pypi/picage#files
 
 
 Welcome to ``picage`` Documentation
 ==============================================================================
 ``picage`` provides a object style interface to handle Python package module / file structure.
-
-
-Quick Links
-------------------------------------------------------------------------------
-
-- .. image:: https://img.shields.io/badge/Link-Document-red.svg
-      :target: http://www.wbh-doc.com.s3.amazonaws.com/picage/index.html
-
-- .. image:: https://img.shields.io/badge/Link-API_Reference_and_Source_Code-red.svg
-      :target: http://www.wbh-doc.com.s3.amazonaws.com/picage/py-modindex.html
-
-- .. image:: https://img.shields.io/badge/Link-Install-red.svg
-      :target: `install`_
-
-- .. image:: https://img.shields.io/badge/Link-GitHub-blue.svg
-      :target: https://github.com/MacHu-GWU/picage-project
-
-- .. image:: https://img.shields.io/badge/Link-Submit_Issue_and_Feature_Request-blue.svg
-      :target: https://github.com/MacHu-GWU/picage-project/issues
-
-- .. image:: https://img.shields.io/badge/Link-Download-blue.svg
-      :target: https://pypi.python.org/pypi/picage#downloads
 
 
 Usage

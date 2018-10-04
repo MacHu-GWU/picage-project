@@ -5,32 +5,12 @@ import pytest
 from pytest import raises
 
 import pip
-import pip.commands
-import pip.commands.install
+import pip._internal.commands
+import pip._internal.commands.install
 
 import six
 import picage
-from picage import assert_is_valid_name, Package, Module
-
-
-def test_assert_is_valid_name():
-    assert_is_valid_name("a")
-    assert_is_valid_name("a.b.c")
-
-    assert_is_valid_name("_a")
-    assert_is_valid_name("_a._b._c")
-
-    with raises(ValueError):
-        assert_is_valid_name("A")
-
-    with raises(ValueError):
-        assert_is_valid_name("0")
-
-    with raises(ValueError):
-        assert_is_valid_name(".a")
-
-    with raises(ValueError):
-        assert_is_valid_name("a#b")
+from picage.model import Package, Module
 
 
 class BaseTest:
@@ -54,16 +34,19 @@ class TestPip(BaseTest):
         assert self.pkg.fullname == "pip"
 
     def test_parent(self):
-        commands = self.pkg["commands"]
+        commands = self.pkg["_internal"]["commands"]
         install = commands["install"]
 
-        assert commands.parent == self.pkg
+        assert commands.parent.parent == self.pkg
         assert install.parent == commands
 
     def test_get_item(self):
-        assert self.pkg["commands"] == Package("pip.commands")
-        assert self.pkg["basecommand"] == Module("pip.basecommand")
-        assert self.pkg["commands.install"] == Module("pip.commands.install")
+        assert self.pkg["_internal"]["commands"] == Package(
+            "pip._internal.commands")
+        assert self.pkg["_internal"]["basecommand"] == Module(
+            "pip._internal.basecommand")
+        assert self.pkg["_internal"]["commands.install"] == Module(
+            "pip._internal.commands.install")
 
         with raises(KeyError):
             self.pkg["Not Exists!"]
@@ -74,20 +57,20 @@ class TestPip(BaseTest):
 
 
 class TestPipCommands(BaseTest):
-    importable = pip.commands
+    importable = pip._internal.commands
 
     def test_name(self):
-        assert self.pkg.name == "pip.commands"
+        assert self.pkg.name == "pip._internal.commands"
         assert self.pkg.shortname == "commands"
-        assert self.pkg.fullname == "pip.commands"
+        assert self.pkg.fullname == "pip._internal.commands"
 
 
 def test_module():
-    module = Module(pip.commands.install.__name__)
+    module = Module(pip._internal.commands.install.__name__)
 
-    assert module.name == "pip.commands.install"
+    assert module.name == "pip._internal.commands.install"
     assert module.shortname == "install"
-    assert module.fullname == "pip.commands.install"
+    assert module.fullname == "pip._internal.commands.install"
 
 
 class TestSix(BaseTest):

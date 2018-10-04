@@ -1,89 +1,21 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function, unicode_literals
-import os
-import sys
-import string
-import platform
+"""
+:class:`Module`, :class:`Package` data model.
+"""
+
+from pathlib_mate import Path
 from collections import OrderedDict
-
-try:
-    from pathlib_mate.pathlib import Path
-except:  # pragma: no cover
-    pass
-
-__version__ = "0.0.4"
-__short_description__ = "Object style interface for package/module."
-__license__ = "MIT"
-__author__ = "Sanhe Hu"
-__author_email__ = "husanhe@gmail.com"
-__maintainer__ = "Sanhe Hu"
-__maintainer_email__ = "husanhe@gmail.com"
-__github_username__ = "MacHu-GWU"
+from .helpers import SP_DIR, assert_is_valid_name
 
 Tab = " " * 4
 
 
-def get_sp_dir():  # pragma: no cover
-    """
-    Get the absolute path of the ``site-packages`` directory.
-    """
-    py_ver_major = sys.version_info.major
-    py_ver_minor = sys.version_info.minor
-
-    system_name = platform.system()
-    if system_name == "Windows":
-        site_packages_path = os.path.join(
-            os.path.dirname(os.path.dirname(sys.executable)),
-            "Lib",
-            "site-packages",
-        )
-    elif system_name in ["Darwin", "Linux"]:
-        site_packages_path = os.path.join(
-            os.path.dirname(os.path.dirname(sys.executable)),
-            "lib",
-            "python%s.%s" % (py_ver_major, py_ver_minor),
-            "site-packages",
-        )
-    else:
-        raise Exception("Unknown Operation System!")
-    return site_packages_path
-
-
-SP_DIR = get_sp_dir()
-"""Current system's site-packages directory..
-"""
-
-_first_letter_for_valid_name = set(string.ascii_lowercase + "_")
-_char_set_for_valid_name = set(string.ascii_letters + string.digits + "_-")
-
-
-def assert_is_valid_name(name, error=None):
-    """
-    Test whether it's a valid package or module name.
-
-    - a-z, 0-9, and underline
-    - starts with underline or alpha letter
-    """
-    if error is None:
-        error = ValueError("%r is not a valid package or module name!" % name)
-    try:
-        if "." in name:
-            for n in name.split("."):
-                assert_is_valid_name(n, error=error)
-        else:
-            if name[0] not in _first_letter_for_valid_name:
-                raise error
-
-            if len(set(name).difference(_char_set_for_valid_name)):
-                raise error
-
-    except:
-        raise error
-
-
 class BaseModuleOrPackage(object):
+    """
+    Base Class to represent a module or package.
+    """
+
     def __init__(self, name, path=None, parent=None, is_single_file=None):
         assert_is_valid_name(name)
 
