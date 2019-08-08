@@ -1,9 +1,13 @@
 # Coverage.py is a tool for measuring code coverage of Python programs.
-# for more info: https://coverage.readthedocs.io/en/coverage-4.4.1/config.html
+# for more info: https://coverage.readthedocs.io/en/latest/config.html
 [run]
 omit =
+    picage/_version.py
+    picage/cli.py
     picage/pkg/*
-    picage/zzz_ezinstall.py
+    picage/docs/*
+    picage/tests/*
+    picage/handlers/*
 
 [report]
 # Regexes for lines to exclude from consideration

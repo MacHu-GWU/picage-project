@@ -1,6 +1,6 @@
 
 .. image:: https://readthedocs.org/projects/picage/badge/?version=latest
-    :target: https://picage.readthedocs.io/?badge=latest
+    :target: https://picage.readthedocs.io/index.html
     :alt: Documentation Status
 
 .. image:: https://travis-ci.org/MacHu-GWU/picage-project.svg?branch=master

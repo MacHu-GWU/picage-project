@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-__version__ = "0.0.5"
+from ._version import __version__
+
 __short_description__ = "Object style interface for package/module."
 __license__ = "MIT"
 __author__ = "Sanhe Hu"
