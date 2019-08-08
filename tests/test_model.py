@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import pytest
@@ -11,6 +10,11 @@ import pip._internal.commands.install
 import six
 import picage
 from picage.model import Package, Module
+
+
+def assert_is_strictly_ascending(l):
+    for i, j in zip(l[:-1], l[1:]):
+        assert i < j
 
 
 class BaseTest:
@@ -52,8 +56,15 @@ class TestPip(BaseTest):
             self.pkg["Not Exists!"]
 
     def test_walk(self):
-        for tp in self.pkg.walk():
-            pass
+        for _, _, sub_packages, sub_modules in self.pkg.walk():
+            assert_is_strictly_ascending([
+                i.fullname
+                for i in sub_packages
+            ])
+            assert_is_strictly_ascending([
+                i.fullname
+                for i in sub_modules
+            ])
 
 
 class TestPipCommands(BaseTest):

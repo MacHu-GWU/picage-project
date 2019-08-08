@@ -124,7 +124,7 @@ class Package(BaseModuleOrPackage):
 
         # walk through all sub packages and sub modules
         if self.is_single_file is False:
-            for p in self.path.iterdir():
+            for p in Path.sort_by_abspath(self.path.iterdir()):
                 # if it's a directory
                 if p.is_dir():
                     # if there is a __init__.py file, must be a sub package
