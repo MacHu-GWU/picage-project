@@ -181,25 +181,43 @@ class Package(BaseModuleOrPackage):
                     raise KeyError("%r doesn't has sub module %r!" % (
                         self.name, name))
 
-    def walk(self):
+    def walk(self, pkg_only=True):
         """
         A generator that walking through all sub packages and sub modules.
+
+        :type pkg_only: bool
+        :param pkg_only: if True, it only yields package (folder with __init__.py)
+            if False, it also yields module, but they don't have
+            sub_packages and sub_modules
+
+        **中文文档**
+
+        遍历一个包的所有子包以及子模块.
 
         1. current package object (包对象)
         2. current package's parent (当前包对象的母包)
         3. list of sub packages (所有子包)
         4. list of sub modules (所有模块)
         """
+        current_module = self
+        parent_module = self.parent
+        sub_packages = list(self.sub_packages.values())
+        sub_modules = list(self.sub_modules.values())
+
         yield (
-            self,
-            self.parent,
-            list(self.sub_packages.values()),
-            list(self.sub_modules.values()),
+            current_module,
+            parent_module,
+            sub_packages,
+            sub_modules,
         )
 
         for pkg in self.sub_packages.values():
-            for things in pkg.walk():
+            for things in pkg.walk(pkg_only=pkg_only):
                 yield things
+
+        if pkg_only is False:
+            for sub_module in self.sub_modules.values():
+                yield sub_module, self, [], []
 
     def _tree_view_builder(self, indent=0, is_root=True):
         """

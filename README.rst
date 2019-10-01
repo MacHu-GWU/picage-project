@@ -51,7 +51,16 @@
 
 Welcome to ``picage`` Documentation
 ==============================================================================
-``picage`` provides a object style interface to handle Python package module / file structure.
+``picage`` provides a object style interface to handle Python package module / file structure. It gives you simple api to access:
+
+- a fullname, shortname of a python module
+- parent, sub packages and sub modules
+- recursively walk through all sub packages and sub modules
+
+.. note::
+
+    Python is a Dyanamic Type Programming language, everything in Python
+    is an object, including python package and module.
 
 
 Usage

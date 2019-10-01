@@ -10,6 +10,7 @@ import pip._internal.commands.install
 import six
 import picage
 from picage.model import Package, Module
+from pathlib_mate import PathCls as Path
 
 
 def assert_is_strictly_ascending(l):
@@ -65,6 +66,9 @@ class TestPip(BaseTest):
                 i.fullname
                 for i in sub_modules
             ])
+
+        assert len(list(Path(self.pkg.path).select_by_ext(".py"))) == \
+               len(list(self.pkg.walk(pkg_only=False)))
 
 
 class TestPipCommands(BaseTest):
