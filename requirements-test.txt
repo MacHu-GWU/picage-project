@@ -1,4 +1,4 @@
 # dependencies for test
 pytest==3.2.3       # test framework
 pytest-cov==2.5.1   # coverage test
-pip==10.0.1
+pip==21.1
