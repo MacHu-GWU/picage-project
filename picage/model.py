@@ -27,10 +27,14 @@ class BaseModuleOrPackage(object):
             chain = self.name.split(".")  # "a.b.c" -> ["a", "b", "c"]
             root = chain[0]
 
-            # test if using .egg-link
-            p = Path(SP_DIR, root.replace("_", "-") + ".egg-link")
-            if p.is_file() and p.exists():
-                with open(p.abspath, "rb") as f:
+            # test if using .egg-link or using .pth
+            p_egg_link = Path(SP_DIR, root.replace("_", "-") + ".egg-link")
+            p_pth = Path(SP_DIR, root + ".pth")
+            if p_egg_link.exists() and p_egg_link.is_file():
+                with open(p_egg_link.abspath, "rb") as f:
+                    sp_dir = f.readline().decode("utf-8").strip()
+            elif p_pth.exists() and p_pth.is_file():
+                with open(p_pth.abspath, "rb") as f:
                     sp_dir = f.readline().decode("utf-8").strip()
             else:
                 sp_dir = SP_DIR
@@ -117,7 +121,11 @@ class Package(BaseModuleOrPackage):
 
     def __init__(self, name, path=None, parent=None, is_single_file=None):
         super(Package, self).__init__(
-            name, path=path, parent=parent, is_single_file=is_single_file)
+            name,
+            path=path,
+            parent=parent,
+            is_single_file=is_single_file,
+        )
 
         self.sub_packages = OrderedDict()
         self.sub_modules = OrderedDict()
@@ -150,15 +158,19 @@ class Package(BaseModuleOrPackage):
                         self.sub_modules[p.fname] = module
 
     def __str__(self):
-        tpl = ("Package("
-               "\n{tab}name=%r,"
-               "\n{tab}path='%s',"
-               "\n{tab}sub_packages=%r,"
-               "\n{tab}sub_modules=%r,"
-               "\n)").format(tab=Tab)
+        tpl = (
+            "Package("
+            "\n{tab}name=%r,"
+            "\n{tab}path='%s',"
+            "\n{tab}sub_packages=%r,"
+            "\n{tab}sub_modules=%r,"
+            "\n)"
+        ).format(tab=Tab)
         s = tpl % (
-            self.name, self.path,
-            list(self.sub_packages), list(self.sub_modules),
+            self.name,
+            self.path,
+            list(self.sub_packages),
+            list(self.sub_modules),
         )
         return s
 
@@ -178,8 +190,7 @@ class Package(BaseModuleOrPackage):
                 try:
                     return self.sub_modules[name]
                 except KeyError:
-                    raise KeyError("%r doesn't has sub module %r!" % (
-                        self.name, name))
+                    raise KeyError("%r doesn't has sub module %r!" % (self.name, name))
 
     def walk(self, pkg_only=True):
         """
@@ -232,9 +243,7 @@ class Package(BaseModuleOrPackage):
         if is_root:
             lines.append(SP_DIR)
 
-        lines.append(
-            "%s%s (%s)" % (pad_text(indent), self.shortname, self.fullname)
-        )
+        lines.append("%s%s (%s)" % (pad_text(indent), self.shortname, self.fullname))
 
         indent += 1
 
@@ -244,16 +253,22 @@ class Package(BaseModuleOrPackage):
 
         # __init__.py
         lines.append(
-            "%s%s (%s)" % (
-                pad_text(indent), "__init__.py", self.fullname,
+            "%s%s (%s)"
+            % (
+                pad_text(indent),
+                "__init__.py",
+                self.fullname,
             )
         )
 
         # sub modules
         for mod in self.sub_modules.values():
             lines.append(
-                "%s%s (%s)" % (
-                    pad_text(indent), mod.shortname + ".py", mod.fullname,
+                "%s%s (%s)"
+                % (
+                    pad_text(indent),
+                    mod.shortname + ".py",
+                    mod.fullname,
                 )
             )
 
