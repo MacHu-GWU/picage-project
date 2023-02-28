@@ -7,7 +7,6 @@ omit =
     picage/pkg/*
     picage/docs/*
     picage/tests/*
-    picage/handlers/*
 
 [report]
 # Regexes for lines to exclude from consideration

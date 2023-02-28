@@ -1,2 +1,1 @@
-six
-pathlib_mate>=0.0.14
+pathlib_mate>=1.0.0
