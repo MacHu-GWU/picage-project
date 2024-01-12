@@ -63,6 +63,9 @@ def is_valid_package_module_name(name):
 
 
 def assert_is_valid_name(name, error=None):  # pragma: no cover
+    """
+    Make sure the name is a valid package or module name.
+    """
     if error is None:
         error = ValueError("%r is not a valid package or module name!" % name)
     if not is_valid_package_module_name(name):

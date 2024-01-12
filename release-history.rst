@@ -15,6 +15,13 @@ Backlog (TODO)
 **Miscellaneous**
 
 
+0.2.2 (2024-01-12)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Features and Improvements**
+
+- Add support for both hyphen and underscore in the ``.egg-link`` or ``.pth`` file.
+
+
 0.2.1 (2023-02-27)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 **Features and Improvements**
@@ -27,12 +34,6 @@ Backlog (TODO)
 **Features and Improvements**
 
 - First Stable Version
-
-**Minor Improvements**
-
-**Bugfixes**
-
-**Miscellaneous**
 
 
 0.0.1 (2017-09-06)

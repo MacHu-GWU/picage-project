@@ -11,7 +11,7 @@ from .helpers import SP_DIR, assert_is_valid_name
 Tab = " " * 4
 
 
-class BaseModuleOrPackage(object):
+class BaseModuleOrPackage:
     """
     Base Class to represent a module or package.
     """
@@ -23,19 +23,30 @@ class BaseModuleOrPackage(object):
         self.parent = parent
         self.is_single_file = is_single_file
 
+        def read_sp_dir(p: Path) -> str:
+            """
+            Read the site-packages directory from a .egg-link or .pth file.
+            """
+            with open(p.abspath, "rb") as f:
+                return f.readline().decode("utf-8").strip()
+
         if path is None:
             chain = self.name.split(".")  # "a.b.c" -> ["a", "b", "c"]
-            root = chain[0]
+            root = chain[0]  # take the first part of the full module import path
 
             # test if using .egg-link or using .pth
-            p_egg_link = Path(SP_DIR, root.replace("_", "-") + ".egg-link")
-            p_pth = Path(SP_DIR, root + ".pth")
-            if p_egg_link.exists() and p_egg_link.is_file():
-                with open(p_egg_link.abspath, "rb") as f:
-                    sp_dir = f.readline().decode("utf-8").strip()
-            elif p_pth.exists() and p_pth.is_file():
-                with open(p_pth.abspath, "rb") as f:
-                    sp_dir = f.readline().decode("utf-8").strip()
+            p_egg_link_1 = Path(SP_DIR, root.replace("_", "-") + ".egg-link")
+            p_egg_link_2 = Path(SP_DIR, root.replace("_", "_") + ".egg-link")
+            p_pth_1 = Path(SP_DIR, root.replace("_", "-") + ".pth")
+            p_pth_2 = Path(SP_DIR, root.replace("_", "_") + ".pth")
+            if p_egg_link_1.exists() and p_egg_link_1.is_file():
+                sp_dir = read_sp_dir(p_egg_link_1)
+            elif p_egg_link_2.exists() and p_egg_link_2.is_file():
+                sp_dir = read_sp_dir(p_egg_link_2)
+            elif p_pth_1.exists() and p_pth_1.is_file():
+                sp_dir = read_sp_dir(p_pth_1)
+            elif p_pth_2.exists() and p_pth_2.is_file():
+                sp_dir = read_sp_dir(p_pth_2)
             else:
                 sp_dir = SP_DIR
 
