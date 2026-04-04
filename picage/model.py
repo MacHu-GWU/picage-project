@@ -4,6 +4,7 @@
 :class:`Module`, :class:`Package` data model.
 """
 
+import sys
 import importlib.util
 from pathlib import Path
 from collections import OrderedDict
@@ -23,6 +24,8 @@ class BaseModuleOrPackage:
         path: Path | None = None,
         parent: "BaseModuleOrPackage | None" = None,
         is_single_file: bool | None = None,
+        sp_dir: str = SP_DIR,
+        extra_sys_path: list[str] | None = None,
     ) -> None:
         assert_is_valid_name(name)
         self.name = name
@@ -30,7 +33,7 @@ class BaseModuleOrPackage:
         self.is_single_file = is_single_file
 
         if path is None:
-            self._locate_path()
+            self._locate_path(sp_dir=sp_dir, extra_sys_path=extra_sys_path)
         else:
             self.path = path
 
@@ -52,9 +55,10 @@ class BaseModuleOrPackage:
         with open(p, "rb") as f:
             return f.readline().decode("utf-8").strip()
 
+    @staticmethod
     def _resolve_via_egg_link(
-        self,
         root: str,
+        sp_dir: str = SP_DIR,
     ) -> str | None:
         """
         Resolve the source-tree root from a legacy ``.egg-link`` file.
@@ -71,18 +75,22 @@ class BaseModuleOrPackage:
         substitute hyphens for underscores, so both variants are tried.
 
         :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :param sp_dir: Site-packages directory to search for the ``.egg-link``
+            file.  Defaults to the active interpreter's ``site-packages``.
         :returns: Absolute path of the source-tree root, or ``None`` if no
             matching ``.egg-link`` file is found.
         """
         for stem in (root.replace("_", "-"), root):
-            p = Path(SP_DIR, stem + ".egg-link")
+            p = Path(sp_dir, stem + ".egg-link")
             if p.is_file():
-                return self._read_first_line(p)
+                with open(p, "rb") as f:
+                    return f.readline().decode("utf-8").strip()
         return None
 
+    @staticmethod
     def _resolve_via_simple_pth(
-        self,
         root: str,
+        sp_dir: str = SP_DIR,
     ) -> str | None:
         """
         Resolve the source-tree root from a plain path-insertion ``.pth`` file.
@@ -102,13 +110,16 @@ class BaseModuleOrPackage:
         :meth:`_resolve_via_importlib`.
 
         :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :param sp_dir: Site-packages directory to search for the ``.pth`` file.
+            Defaults to the active interpreter's ``site-packages``.
         :returns: Absolute path of the source-tree root, or ``None`` if no
             suitable ``.pth`` file is found.
         """
         for stem in (root.replace("_", "-"), root):
-            p = Path(SP_DIR, stem + ".pth")
+            p = Path(sp_dir, stem + ".pth")
             if p.is_file():
-                first_line = self._read_first_line(p)
+                with open(p, "rb") as f:
+                    first_line = f.readline().decode("utf-8").strip()
                 if not first_line.startswith("import ") and Path(first_line).is_dir():
                     return first_line
         return None
@@ -116,6 +127,7 @@ class BaseModuleOrPackage:
     @staticmethod
     def _resolve_via_importlib(
         root: str,
+        extra_sys_path: list[str] | None = None,
     ) -> str | None:
         """
         Resolve the source-tree root via :func:`importlib.util.find_spec`.
@@ -135,11 +147,29 @@ class BaseModuleOrPackage:
         * **Direct-URL non-editable installs** (PEP 610) — result is identical
           to a regular dist-info install.
 
+        When *extra_sys_path* is provided those directories are temporarily
+        prepended to :data:`sys.path` for the duration of the
+        :func:`~importlib.util.find_spec` call, then restored.  This is the
+        dependency-injection interface for testing: callers supply real source
+        directories rather than relying on global interpreter state.
+
         :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :param extra_sys_path: Additional directories to prepend to
+            :data:`sys.path` before calling :func:`~importlib.util.find_spec`.
+            ``None`` (default) leaves :data:`sys.path` untouched.
         :returns: Absolute path of the source-tree root, or ``None`` if
             :func:`importlib.util.find_spec` cannot locate the package.
         """
-        spec = importlib.util.find_spec(root)
+        if extra_sys_path:
+            saved = sys.path[:]
+            sys.path = list(extra_sys_path) + sys.path
+            try:
+                spec = importlib.util.find_spec(root)
+            finally:
+                sys.path = saved
+        else:
+            spec = importlib.util.find_spec(root)
+
         if spec is None:
             return None
         if spec.submodule_search_locations:
@@ -151,40 +181,51 @@ class BaseModuleOrPackage:
     def _find_sp_dir(
         self,
         root: str,
+        sp_dir: str = SP_DIR,
+        extra_sys_path: list[str] | None = None,
     ) -> str:
         """
         Return the source-tree root for *root* by trying each resolution
-        strategy in priority order, falling back to ``SP_DIR``.
+        strategy in priority order, falling back to *sp_dir*.
 
         Resolution order:
 
         1. :meth:`_resolve_via_egg_link` — legacy ``.egg-link`` editable installs.
         2. :meth:`_resolve_via_simple_pth` — PEP 660 Strategy A plain ``.pth`` files.
         3. :meth:`_resolve_via_importlib` — importlib-based universal fallback.
-        4. ``SP_DIR`` — the active interpreter's ``site-packages`` directory.
+        4. *sp_dir* — falls back to the provided site-packages directory.
 
         :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :param sp_dir: Site-packages directory passed to file-based strategies
+            and used as the final fallback.
+        :param extra_sys_path: Forwarded to :meth:`_resolve_via_importlib`.
         :returns: Absolute path of the directory from which *root* can be
             reached by following the dot-separated name chain.
         """
         return (
-            self._resolve_via_egg_link(root)
-            or self._resolve_via_simple_pth(root)
-            or self._resolve_via_importlib(root)
-            or SP_DIR
+            self._resolve_via_egg_link(root, sp_dir=sp_dir)
+            or self._resolve_via_simple_pth(root, sp_dir=sp_dir)
+            or self._resolve_via_importlib(root, extra_sys_path=extra_sys_path)
+            or sp_dir
         )
 
-    def _locate_path(self) -> None:
+    def _locate_path(
+        self,
+        sp_dir: str = SP_DIR,
+        extra_sys_path: list[str] | None = None,
+    ) -> None:
         """
         Set :attr:`path` and :attr:`is_single_file` by navigating from the
         resolved source-tree root through the dot-separated name chain.
 
+        :param sp_dir: Forwarded to :meth:`_find_sp_dir`.
+        :param extra_sys_path: Forwarded to :meth:`_find_sp_dir`.
         :raises ValueError: If neither a single-file module nor a package
             directory with ``__init__.py`` can be found for this name.
         """
         chain = self.name.split(".")
         root = chain[0]
-        sp_dir = self._find_sp_dir(root)
+        sp_dir = self._find_sp_dir(root, sp_dir=sp_dir, extra_sys_path=extra_sys_path)
 
         # Single-file module (e.g. sphinx.builders.html -> .../builders/html.py)
         p = Path(sp_dir, *chain).with_suffix(".py")
@@ -242,6 +283,12 @@ class Module(BaseModuleOrPackage):
         resolved automatically from the installed package.
     :param parent: Parent :class:`Package`, or ``None`` for top-level modules.
     :param is_single_file: ``True`` if this is a single-file module.
+    :param sp_dir: Site-packages directory used for path resolution when
+        *path* is omitted.  Defaults to the active interpreter's
+        ``site-packages``.
+    :param extra_sys_path: Additional directories prepended to
+        :data:`sys.path` during importlib-based resolution.  ``None`` by
+        default.
     """
 
     def __repr__(self) -> str:
@@ -263,6 +310,12 @@ class Package(BaseModuleOrPackage):
     :param parent: Parent :class:`Package`, or ``None`` for top-level packages.
     :param is_single_file: Must be ``False`` for packages; exposed for
         interface consistency with :class:`BaseModuleOrPackage`.
+    :param sp_dir: Site-packages directory used for path resolution when
+        *path* is omitted.  Defaults to the active interpreter's
+        ``site-packages``.
+    :param extra_sys_path: Additional directories prepended to
+        :data:`sys.path` during importlib-based resolution.  ``None`` by
+        default.
 
     Attributes:
 
@@ -284,12 +337,16 @@ class Package(BaseModuleOrPackage):
         path: Path | None = None,
         parent: "Package | None" = None,
         is_single_file: bool | None = None,
+        sp_dir: str = SP_DIR,
+        extra_sys_path: list[str] | None = None,
     ) -> None:
         super(Package, self).__init__(
             name,
             path=path,
             parent=parent,
             is_single_file=is_single_file,
+            sp_dir=sp_dir,
+            extra_sys_path=extra_sys_path,
         )
 
         self.sub_packages: OrderedDict[str, "Package"] = OrderedDict()
