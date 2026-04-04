@@ -8,9 +8,15 @@ import sys
 import string
 
 
-def get_sp_dir():  # pragma: no cover
+def get_sp_dir() -> str:  # pragma: no cover
     """
-    Get the absolute path of the ``site-packages`` directory.
+    Return the absolute path of the ``site-packages`` directory.
+
+    Scans :data:`sys.path` in reverse order and returns the first entry
+    that ends with ``"site-packages"``.
+
+    :raises Exception: If no ``site-packages`` directory is found in
+        :data:`sys.path`.
     """
     for p in sys.path[::-1]:
         if p.endswith("site-packages"):
@@ -18,53 +24,59 @@ def get_sp_dir():  # pragma: no cover
     raise Exception("'site-package' directory not found!")
 
 
-SP_DIR = get_sp_dir()
-"""Current system's site-packages directory..
-"""
+SP_DIR: str = get_sp_dir()
+"""Absolute path of the current interpreter's ``site-packages`` directory."""
 
-_first_letter_for_valid_name = set(string.ascii_lowercase + "_")
-_char_set_for_valid_name = set(string.ascii_letters + string.digits + "_-")
+_first_letter_for_valid_name: set[str] = set(string.ascii_lowercase + "_")
+_char_set_for_valid_name: set[str] = set(string.ascii_letters + string.digits + "_-")
 
 
-def is_valid_package_module_name(name):
+def is_valid_package_module_name(
+    name: str,
+) -> bool:
     """
-    Test whether it's a valid package or module name.
+    Return ``True`` if *name* is a valid Python package or module name.
 
-    - a-z, 0-9, and underline
-    - starts with underline or alpha letter
+    Rules applied to each dot-separated component:
 
-    valid:
+    - Must be non-empty.
+    - First character must be a lowercase ASCII letter or ``_``.
+    - Remaining characters may be ASCII letters, digits, ``_``, or ``-``.
+
+    Examples of **valid** names:
 
     - ``a``
     - ``a.b.c``
     - ``_a``
     - ``_a._b._c``
 
-    invalid:
+    Examples of **invalid** names:
 
-    - ``A``
-    - ``0``
-    - ``.a``
-    - ``a#b``
+    - ``A``   (uppercase first letter)
+    - ``0``   (digit as first character)
+    - ``.a``  (leading dot produces an empty component)
+    - ``a#b`` (illegal character ``#``)
     """
     if "." in name:
-        for part in name.split("."):
-            if not is_valid_package_module_name(part):
-                return False
-    elif len(name):
-        if name[0] not in _first_letter_for_valid_name:
-            return False
-
-        if len(set(name).difference(_char_set_for_valid_name)):
-            return False
-    else:
+        return all(is_valid_package_module_name(part) for part in name.split("."))
+    if not name:
         return False
-    return True
+    if name[0] not in _first_letter_for_valid_name:
+        return False
+    return not set(name).difference(_char_set_for_valid_name)
 
 
-def assert_is_valid_name(name, error=None):  # pragma: no cover
+def assert_is_valid_name(
+    name: str,
+    error: Exception | None = None,
+) -> None:
     """
-    Make sure the name is a valid package or module name.
+    Raise an error if *name* is not a valid package or module name.
+
+    :param name: The name to validate.
+    :param error: Exception instance to raise on failure.  Defaults to a
+        :exc:`ValueError` whose message includes *name*.
+    :raises ValueError: (or the provided *error*) when *name* is invalid.
     """
     if error is None:
         error = ValueError("%r is not a valid package or module name!" % name)
