@@ -105,22 +105,6 @@ Download = "https://pypi.org/pypi/picage#files"
 # For command line interface, read: https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#creating-executable-scripts
 [project.scripts]
 
-[tool.poetry.requires-plugins]
-poetry-plugin-export = ">=1.9.0,<2.0.0"
-
-[tool.poetry]
-# Files to include in the package distribution
-packages = [
-    { include = "picage", from = ".", to = "." }
-]
-# Files to exclude from the package
-exclude = [
-    "picage/tests/*",
-    "picage/docs/*",
-    "**/*.pyc",
-    "**/*.pyo",
-]
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = [

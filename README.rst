@@ -47,6 +47,9 @@
 
 Welcome to ``picage`` Documentation
 ==============================================================================
+.. image:: https://picage.readthedocs.io/en/latest/_static/picage-logo.png
+    :target: https://picage.readthedocs.io/en/latest/
+
 ``picage`` is a lightweight utility library that provides an object-oriented interface for inspecting Python package and module structure. Given any installed package name, it automatically locates the source code on the current Python import path and lets you explore its structure. You can access:
 
 - fully qualified name and short name of any package or module
