@@ -63,7 +63,6 @@ the ``.egg`` directory to ``sys.path``), the test passes
 ``extra_sys_path=[egg_dir]`` directly.
 """
 
-import sys
 import shutil
 import pytest
 from pathlib import Path
@@ -79,11 +78,16 @@ _FORMATS = {
     "finder": (_TSP / "finder_src", "mypkg_finder"),
 }
 
-_EGG_DIR = (
-    _TSP
-    / "egg_dir_src"
-    / f"mypkg_egg_dir-1.0.0-py{sys.version_info.major}.{sys.version_info.minor}.egg"
-)
+def _find_egg_dir() -> Path:
+    """Return the egg directory under egg_dir_src, regardless of Python version tag."""
+    egg_dir_src = _TSP / "egg_dir_src"
+    candidates = sorted(egg_dir_src.glob("mypkg_egg_dir-*.egg"))
+    if not candidates:
+        raise FileNotFoundError(f"No mypkg_egg_dir-*.egg found under {egg_dir_src}")
+    return candidates[0]
+
+
+_EGG_DIR = _find_egg_dir()
 
 
 @pytest.fixture()
