@@ -2,15 +2,14 @@
 
 import pytest
 from pytest import raises
+from pathlib import Path
 
-import pip
-import pip._internal.commands
-import pip._internal.commands.install
+import sphinx
+import sphinx.builders
+import sphinx.builders.html
 
-import six
 import picage
 from picage.model import Package, Module
-from pathlib_mate import PathCls as Path
 
 
 def assert_is_strictly_ascending(l):
@@ -30,26 +29,24 @@ class BaseTest:
         self.pkg.pprint()
 
 
-class TestPip(BaseTest):
-    importable = pip
+class TestSphinx(BaseTest):
+    importable = sphinx
 
     def test_name(self):
-        assert self.pkg.name == "pip"
-        assert self.pkg.shortname == "pip"
-        assert self.pkg.fullname == "pip"
+        assert self.pkg.name == "sphinx"
+        assert self.pkg.shortname == "sphinx"
+        assert self.pkg.fullname == "sphinx"
 
     def test_parent(self):
-        commands = self.pkg["_internal"]["commands"]
-        install = commands["install"]
+        builders = self.pkg["builders"]
+        html = builders["html"]
 
-        assert commands.parent.parent == self.pkg
-        assert install.parent == commands
+        assert builders.parent == self.pkg
+        assert html.parent == builders
 
     def test_get_item(self):
-        assert self.pkg["_internal"]["commands"] == Package("pip._internal.commands")
-        assert self.pkg["_internal"]["commands.install"] == Module(
-            "pip._internal.commands.install"
-        )
+        assert self.pkg["builders"] == Package("sphinx.builders")
+        assert self.pkg["builders.html"] == Module("sphinx.builders.html")
 
         with raises(KeyError):
             self.pkg["Not Exists!"]
@@ -59,30 +56,26 @@ class TestPip(BaseTest):
             assert_is_strictly_ascending([i.fullname for i in sub_packages])
             assert_is_strictly_ascending([i.fullname for i in sub_modules])
 
-        assert len(list(Path(self.pkg.path).select_by_ext(".py"))) == len(
+        assert len(list(Path(self.pkg.path).rglob("*.py"))) == len(
             list(self.pkg.walk(pkg_only=False))
         )
 
 
-class TestPipCommands(BaseTest):
-    importable = pip._internal.commands
+class TestSphinxBuilders(BaseTest):
+    importable = sphinx.builders
 
     def test_name(self):
-        assert self.pkg.name == "pip._internal.commands"
-        assert self.pkg.shortname == "commands"
-        assert self.pkg.fullname == "pip._internal.commands"
+        assert self.pkg.name == "sphinx.builders"
+        assert self.pkg.shortname == "builders"
+        assert self.pkg.fullname == "sphinx.builders"
 
 
 def test_module():
-    module = Module(pip._internal.commands.install.__name__)
+    module = Module(sphinx.builders.html.__name__)
 
-    assert module.name == "pip._internal.commands.install"
-    assert module.shortname == "install"
-    assert module.fullname == "pip._internal.commands.install"
-
-
-class TestSix(BaseTest):
-    importable = six
+    assert module.name == "sphinx.builders.html"
+    assert module.shortname == "html"
+    assert module.fullname == "sphinx.builders.html"
 
 
 class TestPicage(BaseTest):

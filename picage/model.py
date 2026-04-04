@@ -4,7 +4,8 @@
 :class:`Module`, :class:`Package` data model.
 """
 
-from pathlib_mate import Path
+import importlib.util
+from pathlib import Path
 from collections import OrderedDict
 from .helpers import SP_DIR, assert_is_valid_name
 
@@ -16,7 +17,13 @@ class BaseModuleOrPackage:
     Base Class to represent a module or package.
     """
 
-    def __init__(self, name, path=None, parent=None, is_single_file=None):
+    def __init__(
+        self,
+        name: str,
+        path: Path | None = None,
+        parent: "BaseModuleOrPackage | None" = None,
+        is_single_file: bool | None = None,
+    ) -> None:
         assert_is_valid_name(name)
 
         self.name = name
@@ -27,7 +34,7 @@ class BaseModuleOrPackage:
             """
             Read the site-packages directory from a .egg-link or .pth file.
             """
-            with open(p.abspath, "rb") as f:
+            with open(p, "rb") as f:
                 return f.readline().decode("utf-8").strip()
 
         if path is None:
@@ -48,10 +55,20 @@ class BaseModuleOrPackage:
             elif p_pth_2.exists() and p_pth_2.is_file():
                 sp_dir = read_sp_dir(p_pth_2)
             else:
-                sp_dir = SP_DIR
+                # Fallback: use importlib to locate the root package.
+                # This handles uv editable installs (and other non-standard
+                # mechanisms) that register a custom meta path finder instead
+                # of writing a simple <name>.pth file to site-packages.
+                spec = importlib.util.find_spec(root)
+                if spec is not None and spec.submodule_search_locations:
+                    sp_dir = str(Path(spec.submodule_search_locations[0]).parent)
+                elif spec is not None and spec.origin:
+                    sp_dir = str(Path(spec.origin).parent)
+                else:
+                    sp_dir = SP_DIR
 
             # is single file package
-            p = Path(Path(sp_dir, *chain).abspath + ".py")
+            p = Path(sp_dir, *chain).with_suffix(".py")
             if p.is_file() and p.exists():
                 self.path = p
                 self.is_single_file = True
@@ -69,7 +86,7 @@ class BaseModuleOrPackage:
             self.path = path
 
     @property
-    def fullname(self):
+    def fullname(self) -> str:
         """
         Example: for package ``pip.commands.install``, it's
         ``pip.commands.install``.
@@ -77,7 +94,7 @@ class BaseModuleOrPackage:
         return self.name
 
     @property
-    def shortname(self):
+    def shortname(self) -> str:
         """
         Example: for package ``pip.commands.install``, it's ``install``.
         """
@@ -86,7 +103,7 @@ class BaseModuleOrPackage:
         else:
             return self.name
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return self.path == other.path
 
 
@@ -130,7 +147,13 @@ class Package(BaseModuleOrPackage):
     - sub_modules: 有序字典, {子模块的名称: Module对象}
     """
 
-    def __init__(self, name, path=None, parent=None, is_single_file=None):
+    def __init__(
+        self,
+        name: str,
+        path: Path | None = None,
+        parent: "Package | None" = None,
+        is_single_file: bool | None = None,
+    ) -> None:
         super(Package, self).__init__(
             name,
             path=path,
@@ -143,30 +166,30 @@ class Package(BaseModuleOrPackage):
 
         # walk through all sub packages and sub modules
         if self.is_single_file is False:
-            for p in Path.sort_by_abspath(self.path.iterdir()):
+            for p in sorted(self.path.iterdir()):
                 # if it's a directory
                 if p.is_dir():
                     # if there is a __init__.py file, must be a sub package
                     if Path(p, "__init__.py").exists():
                         pkg = Package(
-                            name=name + "." + p.basename,
+                            name=name + "." + p.name,
                             path=p,
                             parent=self,
                             is_single_file=False,
                         )
-                        self.sub_packages[p.basename] = pkg
+                        self.sub_packages[p.name] = pkg
 
                 # if it's a file
                 else:
                     # if it's a .py file, must be a module
-                    if p.ext == ".py" and p.fname != "__init__":
+                    if p.suffix == ".py" and p.stem != "__init__":
                         module = Module(
-                            name=name + "." + p.fname,
+                            name=name + "." + p.stem,
                             path=p,
                             parent=self,
                             is_single_file=True,
                         )
-                        self.sub_modules[p.fname] = module
+                        self.sub_modules[p.stem] = module
 
     def __str__(self):
         tpl = (
