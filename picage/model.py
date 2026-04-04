@@ -25,65 +25,143 @@ class BaseModuleOrPackage:
         is_single_file: bool | None = None,
     ) -> None:
         assert_is_valid_name(name)
-
         self.name = name
         self.parent = parent
         self.is_single_file = is_single_file
 
-        def read_sp_dir(p: Path) -> str:
-            """
-            Read the site-packages directory from a .egg-link or .pth file.
-            """
-            with open(p, "rb") as f:
-                return f.readline().decode("utf-8").strip()
-
         if path is None:
-            chain = self.name.split(".")  # "a.b.c" -> ["a", "b", "c"]
-            root = chain[0]  # take the first part of the full module import path
-
-            # test if using .egg-link or using .pth
-            p_egg_link_1 = Path(SP_DIR, root.replace("_", "-") + ".egg-link")
-            p_egg_link_2 = Path(SP_DIR, root.replace("_", "_") + ".egg-link")
-            p_pth_1 = Path(SP_DIR, root.replace("_", "-") + ".pth")
-            p_pth_2 = Path(SP_DIR, root.replace("_", "_") + ".pth")
-            if p_egg_link_1.exists() and p_egg_link_1.is_file():
-                sp_dir = read_sp_dir(p_egg_link_1)
-            elif p_egg_link_2.exists() and p_egg_link_2.is_file():
-                sp_dir = read_sp_dir(p_egg_link_2)
-            elif p_pth_1.exists() and p_pth_1.is_file():
-                sp_dir = read_sp_dir(p_pth_1)
-            elif p_pth_2.exists() and p_pth_2.is_file():
-                sp_dir = read_sp_dir(p_pth_2)
-            else:
-                # Fallback: use importlib to locate the root package.
-                # This handles uv editable installs (and other non-standard
-                # mechanisms) that register a custom meta path finder instead
-                # of writing a simple <name>.pth file to site-packages.
-                spec = importlib.util.find_spec(root)
-                if spec is not None and spec.submodule_search_locations:
-                    sp_dir = str(Path(spec.submodule_search_locations[0]).parent)
-                elif spec is not None and spec.origin:
-                    sp_dir = str(Path(spec.origin).parent)
-                else:
-                    sp_dir = SP_DIR
-
-            # is single file package
-            p = Path(sp_dir, *chain).with_suffix(".py")
-            if p.is_file() and p.exists():
-                self.path = p
-                self.is_single_file = True
-                return
-
-            # then has to be a directory having __init__.py file
-            p = Path(sp_dir, *chain)
-            if p.is_dir() and p.exists() and Path(p, "__init__.py").exists():
-                self.path = Path(sp_dir, *chain)
-                self.is_single_file = False
-                return
-
-            raise ValueError("Can't found '%s'!" % self.name)
+            self._locate_path()
         else:
             self.path = path
+
+    # ------------------------------------------------------------------
+    # sp_dir resolution strategies
+    # Each method returns the source-tree root (the directory that, when
+    # joined with the dot-separated name chain, yields the package dir),
+    # or None when the strategy does not apply.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _read_first_line(p: Path) -> str:
+        with open(p, "rb") as f:
+            return f.readline().decode("utf-8").strip()
+
+    def _resolve_via_egg_link(self, root: str) -> str | None:
+        """
+        Legacy editable install created by ``python setup.py develop`` or
+        ``pip install -e .`` with old setuptools (pre-PEP 660).
+
+        Layout in site-packages::
+
+            <root>.egg-link          # first line = path to source tree
+            easy-install.pth         # adds that path to sys.path
+
+        The ``.egg-link`` filename uses the distribution name, which may
+        use hyphens where the import name uses underscores, so both
+        variants are tried.
+        """
+        for stem in (root.replace("_", "-"), root):
+            p = Path(SP_DIR, stem + ".egg-link")
+            if p.is_file():
+                return self._read_first_line(p)
+        return None
+
+    def _resolve_via_simple_pth(self, root: str) -> str | None:
+        """
+        PEP 660 editable install — Strategy A (path-insertion ``.pth``).
+
+        Some build backends (e.g. hatchling, flit) write a plain
+        ``<name>.pth`` file whose first line is an absolute directory
+        path that is added to ``sys.path`` at interpreter startup::
+
+            site-packages/
+                <root>.pth           # first line = /path/to/source/src
+
+        This is distinct from import-style ``.pth`` files (whose first
+        line starts with ``import``) such as the
+        ``__editable__.<pkg>-<ver>.pth`` files written by setuptools /
+        uv (PEP 660 Strategy B), which are handled separately.
+        """
+        for stem in (root.replace("_", "-"), root):
+            p = Path(SP_DIR, stem + ".pth")
+            if p.is_file():
+                first_line = self._read_first_line(p)
+                # Reject import-style lines; accept only bare directory paths.
+                if not first_line.startswith("import ") and Path(first_line).is_dir():
+                    return first_line
+        return None
+
+    def _resolve_via_importlib(self, root: str) -> str | None:
+        """
+        Universal fallback using :func:`importlib.util.find_spec`.
+
+        Covers every installation format that registers itself with
+        Python's import machinery before this code runs, including:
+
+        * **PEP 660 Strategy B** — setuptools / uv editable installs that
+          drop an ``__editable__.<pkg>-<ver>.pth`` file which registers a
+          custom :class:`importlib.abc.MetaPathFinder` with a ``MAPPING``
+          dict pointing to the source tree.
+        * **Egg directory** installs — ``easy-install.pth`` adds the
+          ``.egg/`` directory to ``sys.path``, so importlib finds the
+          package inside it.
+        * **Flat dist-info / egg-info installs** (regular pip / uv
+          installs, wheel installs) — the package lives directly in
+          ``site-packages/``, which is always on ``sys.path``.
+        * **Direct-URL non-editable installs** (PEP 610) — result is
+          identical to a regular dist-info install.
+
+        Returns the parent of the root package directory so that the
+        subsequent ``Path(sp_dir, *chain)`` navigation works uniformly
+        for all formats.
+        """
+        spec = importlib.util.find_spec(root)
+        if spec is None:
+            return None
+        if spec.submodule_search_locations:
+            # Package: first search location is the package directory itself.
+            return str(Path(spec.submodule_search_locations[0]).parent)
+        if spec.origin:
+            # Single-file module: origin is the .py file.
+            return str(Path(spec.origin).parent)
+        return None
+
+    def _find_sp_dir(self, root: str) -> str:
+        """
+        Return the source-tree root for *root* by trying each resolution
+        strategy in priority order, falling back to ``SP_DIR``.
+        """
+        return (
+            self._resolve_via_egg_link(root)
+            or self._resolve_via_simple_pth(root)
+            or self._resolve_via_importlib(root)
+            or SP_DIR
+        )
+
+    def _locate_path(self) -> None:
+        """
+        Set ``self.path`` and ``self.is_single_file`` by navigating from
+        the resolved source-tree root through the dot-separated name chain.
+        """
+        chain = self.name.split(".")  # "a.b.c" -> ["a", "b", "c"]
+        root = chain[0]
+        sp_dir = self._find_sp_dir(root)
+
+        # Single-file module (e.g. sphinx.builders.html -> .../builders/html.py)
+        p = Path(sp_dir, *chain).with_suffix(".py")
+        if p.is_file():
+            self.path = p
+            self.is_single_file = True
+            return
+
+        # Package directory (must contain __init__.py)
+        p = Path(sp_dir, *chain)
+        if p.is_dir() and Path(p, "__init__.py").exists():
+            self.path = p
+            self.is_single_file = False
+            return
+
+        raise ValueError("Can't found '%s'!" % self.name)
 
     @property
     def fullname(self) -> str:
