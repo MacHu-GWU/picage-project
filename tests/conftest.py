@@ -17,10 +17,12 @@ Two-tier file organisation
     egg_link_src/mypkg_egg_link/  source tree for legacy .egg-link editable
     pth_src/mypkg_pth/            source tree for PEP 660 Strategy A editable
     finder_src/mypkg_finder/      source tree for PEP 660 Strategy B editable
-    egg_dir_src/
-      mypkg_egg_dir-1.0.0-py3.12.egg/
-        EGG-INFO/                 egg metadata
-        mypkg_egg_dir/            package inside the .egg directory
+
+The egg-directory format (Format 5) is **not** stored on disk.  The ``.egg``
+directory name embeds the Python version tag (e.g. ``py3.10``), and
+``*.egg`` is listed in ``.gitignore``.  The ``fake_sp`` fixture therefore
+builds the egg directory structure from scratch under ``tmp_path`` at test
+time, which works on every Python version without any committed binary blobs.
 
 ``tmp_path/site-packages/`` (generated at test time by the ``fake_sp`` fixture)
     Contains the **format-specific metadata files** that must embed the
@@ -63,6 +65,7 @@ the ``.egg`` directory to ``sys.path``), the test passes
 ``extra_sys_path=[egg_dir]`` directly.
 """
 
+import sys
 import shutil
 import pytest
 from pathlib import Path
@@ -78,16 +81,131 @@ _FORMATS = {
     "finder": (_TSP / "finder_src", "mypkg_finder"),
 }
 
-def _find_egg_dir() -> Path:
-    """Return the egg directory under egg_dir_src, regardless of Python version tag."""
-    egg_dir_src = _TSP / "egg_dir_src"
-    candidates = sorted(egg_dir_src.glob("mypkg_egg_dir-*.egg"))
-    if not candidates:
-        raise FileNotFoundError(f"No mypkg_egg_dir-*.egg found under {egg_dir_src}")
-    return candidates[0]
 
+def _build_egg_dir(base: Path) -> Path:
+    """
+    Create a minimal ``mypkg_egg_dir-1.0.0-pyX.Y.egg`` directory under *base*
+    and return its path.
 
-_EGG_DIR = _find_egg_dir()
+    The egg name embeds the running interpreter's major/minor version so that
+    Python's import machinery recognises it as compatible.  The structure
+    mirrors a real ``python setup.py bdist_egg`` output::
+
+        mypkg_egg_dir-1.0.0-pyX.Y.egg/
+            EGG-INFO/
+                PKG-INFO
+                top_level.txt
+            mypkg_egg_dir/
+                __init__.py
+                _internal.py
+                api.py
+                commands/
+                    __init__.py
+                    _base.py
+                    install.py
+                    uninstall.py
+                    advanced/
+                        __init__.py
+                        _cache.py
+                        solver.py
+                utils/
+                    __init__.py
+                    _helpers.py
+                    number_utils.py
+                    string_utils.py
+    """
+    ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+    egg = base / f"mypkg_egg_dir-1.0.0-py{ver}.egg"
+
+    # EGG-INFO
+    egg_info = egg / "EGG-INFO"
+    egg_info.mkdir(parents=True)
+    (egg_info / "PKG-INFO").write_text(
+        "Metadata-Version: 1.0\nName: mypkg-egg-dir\nVersion: 1.0.0\n"
+        "Summary: Fake egg-directory package for testing.\n"
+    )
+    (egg_info / "top_level.txt").write_text("mypkg_egg_dir\n")
+
+    # mypkg_egg_dir (root package)
+    pkg = egg / "mypkg_egg_dir"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text('# mypkg_egg_dir\n__version__ = "1.0.0"\n')
+    (pkg / "_internal.py").write_text(
+        "# Private implementation details — not part of the public API.\n"
+        "_REGISTRY: dict = {}\n"
+    )
+    (pkg / "api.py").write_text(
+        "# Public API surface for mypkg_egg_dir.\n"
+        "def get_version() -> str:\n"
+        "    from . import __version__\n"
+        "    return __version__\n"
+    )
+
+    # commands sub-package
+    cmd = pkg / "commands"
+    cmd.mkdir()
+    (cmd / "__init__.py").write_text(
+        "# Command registry for mypkg_egg_dir.\nCOMMANDS: dict = {}\n"
+    )
+    (cmd / "_base.py").write_text(
+        "# Base class for all commands — internal, not part of public API.\n"
+        "class BaseCommand:\n"
+        "    name: str = ''\n"
+        "    def execute(self) -> None:\n"
+        "        raise NotImplementedError\n"
+    )
+    (cmd / "install.py").write_text(
+        "# Install command implementation.\n"
+        "def run(package: str, version: str = 'latest') -> bool:\n"
+        "    return True\n"
+    )
+    (cmd / "uninstall.py").write_text(
+        "# Uninstall command implementation.\n"
+        "def run(package: str, force: bool = False) -> bool:\n"
+        "    return True\n"
+    )
+
+    # commands/advanced sub-package
+    adv = cmd / "advanced"
+    adv.mkdir()
+    (adv / "__init__.py").write_text("# Advanced commands — experimental features.\n")
+    (adv / "_cache.py").write_text(
+        "# Internal caching layer for the solver — not public.\n"
+        "_CACHE: dict = {}\n\n"
+        "def invalidate() -> None:\n"
+        "    _CACHE.clear()\n"
+    )
+    (adv / "solver.py").write_text(
+        "# Dependency solver.\n"
+        "def solve(requirements: list[str]) -> list[str]:\n"
+        "    return sorted(set(requirements))\n"
+    )
+
+    # utils sub-package
+    utils = pkg / "utils"
+    utils.mkdir()
+    (utils / "__init__.py").write_text("# Utility helpers for mypkg_egg_dir.\n")
+    (utils / "_helpers.py").write_text(
+        "# Internal utilities — not exported from the utils package.\n"
+        "def _coerce(value) -> str:\n"
+        "    return str(value)\n"
+    )
+    (utils / "number_utils.py").write_text(
+        "# Numeric helpers.\n"
+        "def clamp(value: float, lo: float, hi: float) -> float:\n"
+        "    return max(lo, min(hi, value))\n\n"
+        "def is_even(n: int) -> bool:\n"
+        "    return n % 2 == 0\n"
+    )
+    (utils / "string_utils.py").write_text(
+        "# String manipulation utilities.\n"
+        "def slugify(text: str) -> str:\n"
+        "    return text.lower().replace(' ', '-')\n\n"
+        "def truncate(text: str, max_len: int = 80) -> str:\n"
+        "    return text[:max_len] if len(text) > max_len else text\n"
+    )
+
+    return egg
 
 
 @pytest.fixture()
@@ -163,14 +281,14 @@ def fake_sp(tmp_path: Path) -> dict:
 
     # ------------------------------------------------------------------
     # Format 5: egg directory install
-    # The .egg directory acts as a standalone sys.path entry; the package
-    # lives inside it.  The caller passes the .egg directory via
-    # extra_sys_path.
+    # The .egg directory name embeds the Python version tag (e.g. py3.10)
+    # and *.egg is listed in .gitignore, so we build the directory
+    # programmatically at test time rather than committing it to the repo.
     # ------------------------------------------------------------------
-    # (no site-packages files needed; egg_dir is self-contained)
+    egg_dir = _build_egg_dir(tmp_path)
 
     return {
         "sp_dir": str(sp),
         "finder_src": str(finder_src),
-        "egg_dir": str(_EGG_DIR),
+        "egg_dir": str(egg_dir),
     }
