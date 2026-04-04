@@ -170,10 +170,15 @@ class BaseModuleOrPackage:
             # regardless of whether find_spec raises.
             saved = sys.path[:]
             sys.path = list(extra_sys_path) + sys.path
+            # Invalidate the importer cache so the newly prepended paths are
+            # recognised by FileFinder on Python 3.10 (where the cache is not
+            # automatically refreshed after sys.path mutations).
+            importlib.invalidate_caches()
             try:
                 spec = importlib.util.find_spec(root)
             finally:
                 sys.path = saved
+                importlib.invalidate_caches()
         else:
             spec = importlib.util.find_spec(root)
 

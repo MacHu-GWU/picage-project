@@ -63,6 +63,7 @@ the ``.egg`` directory to ``sys.path``), the test passes
 ``extra_sys_path=[egg_dir]`` directly.
 """
 
+import sys
 import shutil
 import pytest
 from pathlib import Path
@@ -81,7 +82,7 @@ _FORMATS = {
 _EGG_DIR = (
     _TSP
     / "egg_dir_src"
-    / "mypkg_egg_dir-1.0.0-py3.12.egg"
+    / f"mypkg_egg_dir-1.0.0-py{sys.version_info.major}.{sys.version_info.minor}.egg"
 )
 
 
