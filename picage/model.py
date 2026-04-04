@@ -14,7 +14,7 @@ Tab = " " * 4
 
 class BaseModuleOrPackage:
     """
-    Base Class to represent a module or package.
+    Base class representing either a Python module or a package.
     """
 
     def __init__(
@@ -43,13 +43,24 @@ class BaseModuleOrPackage:
 
     @staticmethod
     def _read_first_line(p: Path) -> str:
+        """
+        Read and return the first line of a file as a UTF-8 string.
+
+        :param p: Path to the file to read.
+        :returns: The first line, stripped of leading and trailing whitespace.
+        """
         with open(p, "rb") as f:
             return f.readline().decode("utf-8").strip()
 
-    def _resolve_via_egg_link(self, root: str) -> str | None:
+    def _resolve_via_egg_link(
+        self,
+        root: str,
+    ) -> str | None:
         """
-        Legacy editable install created by ``python setup.py develop`` or
-        ``pip install -e .`` with old setuptools (pre-PEP 660).
+        Resolve the source-tree root from a legacy ``.egg-link`` file.
+
+        This covers editable installs created by ``python setup.py develop``
+        or ``pip install -e .`` with old setuptools (pre-PEP 660).
 
         Layout in site-packages::
 
@@ -57,8 +68,11 @@ class BaseModuleOrPackage:
             easy-install.pth         # adds that path to sys.path
 
         The ``.egg-link`` filename uses the distribution name, which may
-        use hyphens where the import name uses underscores, so both
-        variants are tried.
+        substitute hyphens for underscores, so both variants are tried.
+
+        :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :returns: Absolute path of the source-tree root, or ``None`` if no
+            matching ``.egg-link`` file is found.
         """
         for stem in (root.replace("_", "-"), root):
             p = Path(SP_DIR, stem + ".egg-link")
@@ -66,70 +80,92 @@ class BaseModuleOrPackage:
                 return self._read_first_line(p)
         return None
 
-    def _resolve_via_simple_pth(self, root: str) -> str | None:
+    def _resolve_via_simple_pth(
+        self,
+        root: str,
+    ) -> str | None:
         """
-        PEP 660 editable install — Strategy A (path-insertion ``.pth``).
+        Resolve the source-tree root from a plain path-insertion ``.pth`` file.
 
-        Some build backends (e.g. hatchling, flit) write a plain
-        ``<name>.pth`` file whose first line is an absolute directory
-        path that is added to ``sys.path`` at interpreter startup::
+        This covers PEP 660 editable installs using Strategy A, where build
+        backends such as hatchling or flit write a ``<name>.pth`` file whose
+        first line is an absolute directory path added to ``sys.path`` at
+        interpreter startup::
 
             site-packages/
                 <root>.pth           # first line = /path/to/source/src
 
-        This is distinct from import-style ``.pth`` files (whose first
-        line starts with ``import``) such as the
-        ``__editable__.<pkg>-<ver>.pth`` files written by setuptools /
-        uv (PEP 660 Strategy B), which are handled separately.
+        Import-style ``.pth`` files — whose first line begins with
+        ``import`` — are explicitly rejected to avoid matching the
+        ``__editable__.<pkg>-<ver>.pth`` files written by setuptools/uv
+        (PEP 660 Strategy B), which are handled by
+        :meth:`_resolve_via_importlib`.
+
+        :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :returns: Absolute path of the source-tree root, or ``None`` if no
+            suitable ``.pth`` file is found.
         """
         for stem in (root.replace("_", "-"), root):
             p = Path(SP_DIR, stem + ".pth")
             if p.is_file():
                 first_line = self._read_first_line(p)
-                # Reject import-style lines; accept only bare directory paths.
                 if not first_line.startswith("import ") and Path(first_line).is_dir():
                     return first_line
         return None
 
-    def _resolve_via_importlib(self, root: str) -> str | None:
+    @staticmethod
+    def _resolve_via_importlib(
+        root: str,
+    ) -> str | None:
         """
-        Universal fallback using :func:`importlib.util.find_spec`.
+        Resolve the source-tree root via :func:`importlib.util.find_spec`.
 
-        Covers every installation format that registers itself with
-        Python's import machinery before this code runs, including:
+        This is a universal fallback that covers every installation format
+        that registers itself with Python's import machinery before this
+        code runs, including:
 
-        * **PEP 660 Strategy B** — setuptools / uv editable installs that
-          drop an ``__editable__.<pkg>-<ver>.pth`` file which registers a
-          custom :class:`importlib.abc.MetaPathFinder` with a ``MAPPING``
-          dict pointing to the source tree.
-        * **Egg directory** installs — ``easy-install.pth`` adds the
-          ``.egg/`` directory to ``sys.path``, so importlib finds the
-          package inside it.
-        * **Flat dist-info / egg-info installs** (regular pip / uv
-          installs, wheel installs) — the package lives directly in
-          ``site-packages/``, which is always on ``sys.path``.
-        * **Direct-URL non-editable installs** (PEP 610) — result is
-          identical to a regular dist-info install.
+        * **PEP 660 Strategy B** — setuptools/uv editable installs that drop
+          an ``__editable__.<pkg>-<ver>.pth`` file registering a custom
+          :class:`importlib.abc.MetaPathFinder` with a ``MAPPING`` dict
+          pointing to the source tree.
+        * **Egg directory installs** — ``easy-install.pth`` adds the ``.egg/``
+          directory to ``sys.path``, so importlib finds the package inside it.
+        * **Flat dist-info / egg-info installs** — regular pip/uv installs and
+          wheel installs where the package lives directly in ``site-packages/``.
+        * **Direct-URL non-editable installs** (PEP 610) — result is identical
+          to a regular dist-info install.
 
-        Returns the parent of the root package directory so that the
-        subsequent ``Path(sp_dir, *chain)`` navigation works uniformly
-        for all formats.
+        :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :returns: Absolute path of the source-tree root, or ``None`` if
+            :func:`importlib.util.find_spec` cannot locate the package.
         """
         spec = importlib.util.find_spec(root)
         if spec is None:
             return None
         if spec.submodule_search_locations:
-            # Package: first search location is the package directory itself.
             return str(Path(spec.submodule_search_locations[0]).parent)
         if spec.origin:
-            # Single-file module: origin is the .py file.
             return str(Path(spec.origin).parent)
         return None
 
-    def _find_sp_dir(self, root: str) -> str:
+    def _find_sp_dir(
+        self,
+        root: str,
+    ) -> str:
         """
         Return the source-tree root for *root* by trying each resolution
         strategy in priority order, falling back to ``SP_DIR``.
+
+        Resolution order:
+
+        1. :meth:`_resolve_via_egg_link` — legacy ``.egg-link`` editable installs.
+        2. :meth:`_resolve_via_simple_pth` — PEP 660 Strategy A plain ``.pth`` files.
+        3. :meth:`_resolve_via_importlib` — importlib-based universal fallback.
+        4. ``SP_DIR`` — the active interpreter's ``site-packages`` directory.
+
+        :param root: Top-level import name of the package (e.g. ``"my_pkg"``).
+        :returns: Absolute path of the directory from which *root* can be
+            reached by following the dot-separated name chain.
         """
         return (
             self._resolve_via_egg_link(root)
@@ -140,10 +176,13 @@ class BaseModuleOrPackage:
 
     def _locate_path(self) -> None:
         """
-        Set ``self.path`` and ``self.is_single_file`` by navigating from
-        the resolved source-tree root through the dot-separated name chain.
+        Set :attr:`path` and :attr:`is_single_file` by navigating from the
+        resolved source-tree root through the dot-separated name chain.
+
+        :raises ValueError: If neither a single-file module nor a package
+            directory with ``__init__.py`` can be found for this name.
         """
-        chain = self.name.split(".")  # "a.b.c" -> ["a", "b", "c"]
+        chain = self.name.split(".")
         root = chain[0]
         sp_dir = self._find_sp_dir(root)
 
@@ -166,63 +205,77 @@ class BaseModuleOrPackage:
     @property
     def fullname(self) -> str:
         """
-        Example: for package ``pip.commands.install``, it's
-        ``pip.commands.install``.
+        Fully qualified import name.
+
+        Example: for ``sphinx.builders.html`` the fullname is
+        ``"sphinx.builders.html"``.
         """
         return self.name
 
     @property
     def shortname(self) -> str:
         """
-        Example: for package ``pip.commands.install``, it's ``install``.
+        Unqualified (leaf) import name.
+
+        Example: for ``sphinx.builders.html`` the shortname is ``"html"``.
         """
         if "." in self.name:
             return self.name.split(".")[-1]
         else:
             return self.name
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(
+        self,
+        other: object,
+    ) -> bool:
+        if not isinstance(other, BaseModuleOrPackage):
+            return NotImplemented
         return self.path == other.path
 
 
 class Module(BaseModuleOrPackage):
     """
-    Represent a module object in Python. Typically it's a ``*.py`` file.
+    Represent a Python module — typically a single ``*.py`` file.
 
-    :param name: module name, e.g.: "pip.commands.install".
-    :param path: module file absolute path.
-    :param parent: default None, parent package name, list of package
-    :param is_single_file: if it is a single file package/module.
+    :param name: Fully qualified module name, e.g. ``"sphinx.builders.html"``.
+    :param path: Absolute path to the module file.  When omitted the path is
+        resolved automatically from the installed package.
+    :param parent: Parent :class:`Package`, or ``None`` for top-level modules.
+    :param is_single_file: ``True`` if this is a single-file module.
     """
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Module(name=%r, path='%s')" % (self.name, self.path)
 
 
 class Package(BaseModuleOrPackage):
     """
-    Represent a package object in Python. It is a directory having a
-    ``__init__.py`` file.
+    Represent a Python package — a directory containing an ``__init__.py`` file.
 
-    :param name: dot seperated full name, e.g.: "pip.commands.install".
-    :param path: package directory/file absolute path.
-    :param parent parent: parent package, instance of :class:`Package`.
+    On construction the package tree is walked eagerly: every sub-directory
+    that contains an ``__init__.py`` becomes a child :class:`Package`, and
+    every other ``*.py`` file (except ``__init__.py``) becomes a child
+    :class:`Module`.
 
-    **中文文档**
+    :param name: Dot-separated fully qualified name, e.g. ``"sphinx.builders"``.
+    :param path: Absolute path to the package directory.  When omitted the path
+        is resolved automatically from the installed package.
+    :param parent: Parent :class:`Package`, or ``None`` for top-level packages.
+    :param is_single_file: Must be ``False`` for packages; exposed for
+        interface consistency with :class:`BaseModuleOrPackage`.
 
-    是Python中Package概念的抽象类。指包含有 ``__init__.py`` 文件的文件夹。
-    Package必须可以被import命令所导入, 换言之, 就是已经被成功安装了。
+    Attributes:
 
-    Package的属性的解释:
-
-    - name: 包名称
-    - path: 包目录所在的路径
-    - fullname: 包的全名, 带母包
-    - shortname: 包的短名称, 也就是最后一个点之后的部分。
-    - parent: 母包的实例。
-    - is_single_file: 是否是单文件的包。
-    - sub_packages: 有序字典, {子包的名称: Package对象}
-    - sub_modules: 有序字典, {子模块的名称: Module对象}
+    - ``name``: Fully qualified package name.
+    - ``path``: Absolute path to the package directory.
+    - ``fullname``: Same as ``name``.
+    - ``shortname``: Leaf component of ``name`` (part after the last dot).
+    - ``parent``: Parent :class:`Package` instance, or ``None``.
+    - ``is_single_file``: Always ``False`` for directory-based packages.
+    - ``sub_packages``: :class:`~collections.OrderedDict` mapping child package
+      names to :class:`Package` instances.
+    - ``sub_modules``: :class:`~collections.OrderedDict` mapping child module
+      names to :class:`Module` instances.
     """
 
     def __init__(
@@ -239,15 +292,12 @@ class Package(BaseModuleOrPackage):
             is_single_file=is_single_file,
         )
 
-        self.sub_packages = OrderedDict()
-        self.sub_modules = OrderedDict()
+        self.sub_packages: OrderedDict[str, "Package"] = OrderedDict()
+        self.sub_modules: OrderedDict[str, Module] = OrderedDict()
 
-        # walk through all sub packages and sub modules
         if self.is_single_file is False:
             for p in sorted(self.path.iterdir()):
-                # if it's a directory
                 if p.is_dir():
-                    # if there is a __init__.py file, must be a sub package
                     if Path(p, "__init__.py").exists():
                         pkg = Package(
                             name=name + "." + p.name,
@@ -256,10 +306,7 @@ class Package(BaseModuleOrPackage):
                             is_single_file=False,
                         )
                         self.sub_packages[p.name] = pkg
-
-                # if it's a file
                 else:
-                    # if it's a .py file, must be a module
                     if p.suffix == ".py" and p.stem != "__init__":
                         module = Module(
                             name=name + "." + p.stem,
@@ -269,7 +316,7 @@ class Package(BaseModuleOrPackage):
                         )
                         self.sub_modules[p.stem] = module
 
-    def __str__(self):
+    def __str__(self) -> str:
         tpl = (
             "Package("
             "\n{tab}name=%r,"
@@ -278,116 +325,116 @@ class Package(BaseModuleOrPackage):
             "\n{tab}sub_modules=%r,"
             "\n)"
         ).format(tab=Tab)
-        s = tpl % (
+        return tpl % (
             self.name,
             self.path,
             list(self.sub_packages),
             list(self.sub_modules),
         )
-        return s
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Package(name=%r, path='%s')" % (self.name, self.path)
 
-    def __getitem__(self, name):
+    def __getitem__(
+        self,
+        name: str,
+    ) -> "Package | Module":
+        """
+        Retrieve a direct child package or module by name, supporting
+        dot-separated paths for deeper traversal.
+
+        :param name: Child name (e.g. ``"builders"``) or dot-separated path
+            (e.g. ``"builders.html"``).
+        :returns: The matching :class:`Package` or :class:`Module`.
+        :raises KeyError: If no child with the given name exists.
+        """
         if "." in name:
-            item = self
+            item: "Package" = self
             for _name in name.split("."):
-                item = item[_name]
+                item = item[_name]  # type: ignore[assignment]
             return item
-        else:
+        try:
+            return self.sub_packages[name]
+        except KeyError:
             try:
-                return self.sub_packages[name]
+                return self.sub_modules[name]
             except KeyError:
-                try:
-                    return self.sub_modules[name]
-                except KeyError:
-                    raise KeyError("%r doesn't has sub module %r!" % (self.name, name))
+                raise KeyError("%r doesn't has sub module %r!" % (self.name, name))
 
-    def walk(self, pkg_only=True):
+    def walk(
+        self,
+        pkg_only: bool = True,
+    ):
         """
-        A generator that walking through all sub packages and sub modules.
+        Recursively yield the package tree.
 
-        :type pkg_only: bool
-        :param pkg_only: if True, it only yields package (folder with __init__.py)
-            if False, it also yields module, but they don't have
-            sub_packages and sub_modules
+        Each iteration yields a 4-tuple:
 
-        **中文文档**
+        1. *current* — the current :class:`Package` (or :class:`Module` when
+           ``pkg_only=False``).
+        2. *parent* — the parent :class:`Package`, or ``None`` for the root.
+        3. *sub_packages* — list of direct child :class:`Package` instances.
+        4. *sub_modules* — list of direct child :class:`Module` instances.
 
-        遍历一个包的所有子包以及子模块.
-
-        1. current package object (包对象)
-        2. current package's parent (当前包对象的母包)
-        3. list of sub packages (所有子包)
-        4. list of sub modules (所有模块)
+        :param pkg_only: When ``True`` (default) only packages are yielded.
+            When ``False`` leaf modules are also yielded as 4-tuples whose
+            *sub_packages* and *sub_modules* lists are empty.
         """
-        current_module = self
-        parent_module = self.parent
-        sub_packages = list(self.sub_packages.values())
-        sub_modules = list(self.sub_modules.values())
-
         yield (
-            current_module,
-            parent_module,
-            sub_packages,
-            sub_modules,
+            self,
+            self.parent,
+            list(self.sub_packages.values()),
+            list(self.sub_modules.values()),
         )
 
         for pkg in self.sub_packages.values():
-            for things in pkg.walk(pkg_only=pkg_only):
-                yield things
+            yield from pkg.walk(pkg_only=pkg_only)
 
-        if pkg_only is False:
+        if not pkg_only:
             for sub_module in self.sub_modules.values():
                 yield sub_module, self, [], []
 
-    def _tree_view_builder(self, indent=0, is_root=True):
+    def _tree_view_builder(
+        self,
+        indent: int = 0,
+        is_root: bool = True,
+    ) -> str:
         """
-        Build a text to represent the package structure.
+        Build and return a text representation of the package tree.
+
+        :param indent: Current indentation level (increases with each level).
+        :param is_root: When ``True`` the ``SP_DIR`` header line is prepended.
+        :returns: Multi-line string representing the subtree rooted at this
+            package.
         """
 
-        def pad_text(indent):
-            return "    " * indent + "|-- "
+        def pad_text(level: int) -> str:
+            return "    " * level + "|-- "
 
-        lines = list()
+        lines: list[str] = []
 
         if is_root:
             lines.append(SP_DIR)
 
         lines.append("%s%s (%s)" % (pad_text(indent), self.shortname, self.fullname))
-
         indent += 1
 
-        # sub packages
         for pkg in self.sub_packages.values():
             lines.append(pkg._tree_view_builder(indent=indent, is_root=False))
 
-        # __init__.py
         lines.append(
-            "%s%s (%s)"
-            % (
-                pad_text(indent),
-                "__init__.py",
-                self.fullname,
-            )
+            "%s%s (%s)" % (pad_text(indent), "__init__.py", self.fullname)
         )
 
-        # sub modules
         for mod in self.sub_modules.values():
             lines.append(
-                "%s%s (%s)"
-                % (
-                    pad_text(indent),
-                    mod.shortname + ".py",
-                    mod.fullname,
-                )
+                "%s%s (%s)" % (pad_text(indent), mod.shortname + ".py", mod.fullname)
             )
 
         return "\n".join(lines)
 
-    def pprint(self):
+    def pprint(self) -> None:
         """
-        Pretty print the package structure.
+        Print the package tree to stdout.
         """
         print(self._tree_view_builder(indent=0, is_root=True))
