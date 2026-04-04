@@ -33,8 +33,11 @@ class BaseModuleOrPackage:
         self.is_single_file = is_single_file
 
         if path is None:
+            # No explicit path provided: resolve it from the installed package.
             self._locate_path(sp_dir=sp_dir, extra_sys_path=extra_sys_path)
         else:
+            # Caller supplied an explicit path (e.g. when building the tree
+            # recursively for sub-packages that are already known).
             self.path = path
 
     # ------------------------------------------------------------------
@@ -43,17 +46,6 @@ class BaseModuleOrPackage:
     # joined with the dot-separated name chain, yields the package dir),
     # or None when the strategy does not apply.
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _read_first_line(p: Path) -> str:
-        """
-        Read and return the first line of a file as a UTF-8 string.
-
-        :param p: Path to the file to read.
-        :returns: The first line, stripped of leading and trailing whitespace.
-        """
-        with open(p, "rb") as f:
-            return f.readline().decode("utf-8").strip()
 
     @staticmethod
     def _resolve_via_egg_link(
@@ -80,9 +72,15 @@ class BaseModuleOrPackage:
         :returns: Absolute path of the source-tree root, or ``None`` if no
             matching ``.egg-link`` file is found.
         """
+        # Distribution names may use hyphens where import names use underscores
+        # (e.g. "my-pkg" on disk vs "my_pkg" in import statements), so try
+        # the hyphenated variant first, then the original.
         for stem in (root.replace("_", "-"), root):
             p = Path(sp_dir, stem + ".egg-link")
             if p.is_file():
+                # The .egg-link format is a text file whose first line is the
+                # absolute path to the project source directory, followed by
+                # an optional second line containing ".".
                 with open(p, "rb") as f:
                     return f.readline().decode("utf-8").strip()
         return None
@@ -115,11 +113,17 @@ class BaseModuleOrPackage:
         :returns: Absolute path of the source-tree root, or ``None`` if no
             suitable ``.pth`` file is found.
         """
+        # Same hyphen/underscore duality as in _resolve_via_egg_link.
         for stem in (root.replace("_", "-"), root):
             p = Path(sp_dir, stem + ".pth")
             if p.is_file():
                 with open(p, "rb") as f:
                     first_line = f.readline().decode("utf-8").strip()
+                # Reject import-style lines such as:
+                #   "import __editable___mypkg_1_0_finder; ..."
+                # Those are PEP 660 Strategy B files; we must not misread them
+                # as a plain directory path.  Only accept lines that are an
+                # existing directory on disk.
                 if not first_line.startswith("import ") and Path(first_line).is_dir():
                     return first_line
         return None
@@ -161,6 +165,9 @@ class BaseModuleOrPackage:
             :func:`importlib.util.find_spec` cannot locate the package.
         """
         if extra_sys_path:
+            # Temporarily extend sys.path so find_spec can see the injected
+            # directories.  The original list is restored in the finally block
+            # regardless of whether find_spec raises.
             saved = sys.path[:]
             sys.path = list(extra_sys_path) + sys.path
             try:
@@ -171,11 +178,32 @@ class BaseModuleOrPackage:
             spec = importlib.util.find_spec(root)
 
         if spec is None:
+            # importlib has no knowledge of this package at all.
             return None
+
         if spec.submodule_search_locations:
+            # spec.submodule_search_locations is a list of directories on the
+            # file system that Python will search for sub-modules / sub-packages
+            # of this package.  For a regular package the list contains exactly
+            # one entry: the package directory itself (e.g. ".../site-packages/
+            # sphinx/").  Taking its parent gives us the sp_dir equivalent
+            # (e.g. ".../site-packages/"), from which the full name chain can be
+            # reconstructed by _locate_path.
             return str(Path(spec.submodule_search_locations[0]).parent)
+
+        # spec.origin is the path to the file that implements the module.  For
+        # a normal package this would be its __init__.py, but packages always
+        # have submodule_search_locations set, so we only reach here for
+        # single-file modules (e.g. a legacy "six.py" top-level module that
+        # lives directly in site-packages).  Taking the parent of origin gives
+        # the directory that contains the .py file, which serves as sp_dir for
+        # _locate_path.
         if spec.origin:
             return str(Path(spec.origin).parent)
+
+        # spec exists but carries neither search locations nor an origin path.
+        # This is not expected for any real installed package; return None so
+        # _find_sp_dir falls through to the sp_dir default.
         return None
 
     def _find_sp_dir(
@@ -206,7 +234,7 @@ class BaseModuleOrPackage:
             self._resolve_via_egg_link(root, sp_dir=sp_dir)
             or self._resolve_via_simple_pth(root, sp_dir=sp_dir)
             or self._resolve_via_importlib(root, extra_sys_path=extra_sys_path)
-            or sp_dir
+            or sp_dir  # last resort: the package lives directly in sp_dir
         )
 
     def _locate_path(
@@ -223,18 +251,22 @@ class BaseModuleOrPackage:
         :raises ValueError: If neither a single-file module nor a package
             directory with ``__init__.py`` can be found for this name.
         """
+        # "a.b.c" → ["a", "b", "c"]; root is always chain[0].
         chain = self.name.split(".")
         root = chain[0]
         sp_dir = self._find_sp_dir(root, sp_dir=sp_dir, extra_sys_path=extra_sys_path)
 
-        # Single-file module (e.g. sphinx.builders.html -> .../builders/html.py)
+        # Try single-file module first: e.g. "sphinx.builders.html" maps to
+        # <sp_dir>/sphinx/builders/html.py.
         p = Path(sp_dir, *chain).with_suffix(".py")
         if p.is_file():
             self.path = p
             self.is_single_file = True
             return
 
-        # Package directory (must contain __init__.py)
+        # Otherwise expect a package directory that contains an __init__.py.
+        # The presence of __init__.py distinguishes a real package from an
+        # arbitrary directory that happens to share the package name.
         p = Path(sp_dir, *chain)
         if p.is_dir() and Path(p, "__init__.py").exists():
             self.path = p
@@ -261,8 +293,10 @@ class BaseModuleOrPackage:
         Example: for ``sphinx.builders.html`` the shortname is ``"html"``.
         """
         if "." in self.name:
+            # "a.b.c" → "c"
             return self.name.split(".")[-1]
         else:
+            # Top-level name with no dots: shortname == fullname.
             return self.name
 
     def __eq__(
@@ -352,9 +386,15 @@ class Package(BaseModuleOrPackage):
         self.sub_packages: OrderedDict[str, "Package"] = OrderedDict()
         self.sub_modules: OrderedDict[str, Module] = OrderedDict()
 
+        # Only walk the directory tree when this is a proper package directory
+        # (is_single_file=False).  is_single_file=True means the "package" is
+        # a single .py file (e.g. a legacy six.py), which has no children.
         if self.is_single_file is False:
             for p in sorted(self.path.iterdir()):
                 if p.is_dir():
+                    # A sub-directory is a sub-package only if it contains an
+                    # __init__.py; bare directories (data dirs, __pycache__,
+                    # etc.) are skipped.
                     if Path(p, "__init__.py").exists():
                         pkg = Package(
                             name=name + "." + p.name,
@@ -364,6 +404,8 @@ class Package(BaseModuleOrPackage):
                         )
                         self.sub_packages[p.name] = pkg
                 else:
+                    # A .py file is a sub-module unless it is __init__.py,
+                    # which represents the package itself rather than a module.
                     if p.suffix == ".py" and p.stem != "__init__":
                         module = Module(
                             name=name + "." + p.stem,
@@ -406,11 +448,16 @@ class Package(BaseModuleOrPackage):
         :raises KeyError: If no child with the given name exists.
         """
         if "." in name:
+            # Dot notation: traverse one component at a time.
+            # e.g. "commands.advanced.solver" → pkg["commands"]["advanced"]["solver"]
             item: "Package" = self
             for _name in name.split("."):
                 item = item[_name]  # type: ignore[assignment]
             return item
         try:
+            # Check sub-packages first; a package and a module cannot share the
+            # same stem inside a single directory, so the order does not matter
+            # in practice, but packages are conventionally more prominent.
             return self.sub_packages[name]
         except KeyError:
             try:
@@ -437,6 +484,7 @@ class Package(BaseModuleOrPackage):
             When ``False`` leaf modules are also yielded as 4-tuples whose
             *sub_packages* and *sub_modules* lists are empty.
         """
+        # Yield this package node first (pre-order traversal).
         yield (
             self,
             self.parent,
@@ -444,10 +492,13 @@ class Package(BaseModuleOrPackage):
             list(self.sub_modules.values()),
         )
 
+        # Recurse into sub-packages.
         for pkg in self.sub_packages.values():
             yield from pkg.walk(pkg_only=pkg_only)
 
         if not pkg_only:
+            # When the caller wants all nodes, emit leaf modules as 4-tuples
+            # with empty child lists (modules have no children of their own).
             for sub_module in self.sub_modules.values():
                 yield sub_module, self, [], []
 
@@ -476,13 +527,16 @@ class Package(BaseModuleOrPackage):
         lines.append("%s%s (%s)" % (pad_text(indent), self.shortname, self.fullname))
         indent += 1
 
+        # Sub-packages come before __init__.py and modules in the display.
         for pkg in self.sub_packages.values():
             lines.append(pkg._tree_view_builder(indent=indent, is_root=False))
 
+        # __init__.py is shown as belonging to this package's namespace.
         lines.append(
             "%s%s (%s)" % (pad_text(indent), "__init__.py", self.fullname)
         )
 
+        # Leaf modules follow __init__.py.
         for mod in self.sub_modules.values():
             lines.append(
                 "%s%s (%s)" % (pad_text(indent), mod.shortname + ".py", mod.fullname)
